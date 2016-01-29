@@ -46,15 +46,14 @@ func (a *LogstashAdapter) Stream(logstream chan *router.Message) {
 		err := json.Unmarshal([]byte(m.Data), &jsonMsg)
 		if err != nil {
 			// the message is not in JSON make a new JSON message
-			a := DockerInfo{
-				Name:     m.Container.Name,
-				ID:       m.Container.ID,
-				Image:    m.Container.Config.Image,
-				Hostname: m.Container.Config.Hostname,
-			}
 			msg := LogstashMessage{
 				Message: m.Data,
-				Docker:  a,
+				Docker: DockerInfo{
+					Name:     m.Container.Name,
+					ID:       m.Container.ID,
+					Image:    m.Container.Config.Image,
+					Hostname: m.Container.Config.Hostname,
+				},
 			}
 			js, err = json.Marshal(msg)
 			if err != nil {
@@ -62,7 +61,7 @@ func (a *LogstashAdapter) Stream(logstream chan *router.Message) {
 				continue
 			}
 		} else {
-			// the message is already in JSON just add the docker specific fields
+			// the message is already in JSON just add the docker specific fields as a nested structure
 			var dockerInfo = make(map[string]interface{})
 
 			dockerInfo["name"] = m.Container.Name
