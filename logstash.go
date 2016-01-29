@@ -40,33 +40,43 @@ func NewLogstashAdapter(route *router.Route) (router.LogAdapter, error) {
 // Stream implements the router.LogAdapter interface.
 func (a *LogstashAdapter) Stream(logstream chan *router.Message) {
 	for m := range logstream {
-		var msg interface{}
+		var js []byte
 
 		var jsonMsg map[string]interface{}
 		err := json.Unmarshal([]byte(m.Data), &jsonMsg)
 		if err != nil {
 			// the message is not in JSON make a new JSON message
-			msg = LogstashMessage{
-				Message:  m.Data,
+			a := DockerInfo{
 				Name:     m.Container.Name,
 				ID:       m.Container.ID,
 				Image:    m.Container.Config.Image,
 				Hostname: m.Container.Config.Hostname,
 			}
-
+			msg := LogstashMessage{
+				Message: m.Data,
+				Docker:  a,
+			}
+			js, err = json.Marshal(msg)
+			if err != nil {
+				log.Println("logstash:", err)
+				continue
+			}
 		} else {
 			// the message is already in JSON just add the docker specific fields
-			jsonMsg["docker.name"] = m.Container.Name
-			jsonMsg["docker.id"] = m.Container.ID
-			jsonMsg["docker.image"] = m.Container.Config.Image
-			jsonMsg["docker.hostname"] = m.Container.Config.Hostname
-			msg = jsonMsg
-		}
+			var dockerInfo = make(map[string]interface{})
 
-		js, err := json.Marshal(msg)
-		if err != nil {
-			log.Println("logstash:", err)
-			continue
+			dockerInfo["name"] = m.Container.Name
+			dockerInfo["id"] = m.Container.ID
+			dockerInfo["image"] = m.Container.Config.Image
+			dockerInfo["hostname"] = m.Container.Config.Hostname
+
+			jsonMsg["docker"] = dockerInfo
+
+			js, err = json.Marshal(jsonMsg)
+			if err != nil {
+				log.Println("logstash:", err)
+				continue
+			}
 		}
 		_, err = a.conn.Write(js)
 		if err != nil {
@@ -76,11 +86,15 @@ func (a *LogstashAdapter) Stream(logstream chan *router.Message) {
 	}
 }
 
+type DockerInfo struct {
+	Name     string `json:"name"`
+	ID       string `json:"id"`
+	Image    string `json:"image"`
+	Hostname string `json:"hostname"`
+}
+
 // LogstashMessage is a simple JSON input to Logstash.
 type LogstashMessage struct {
-	Message  string `json:"message"`
-	Name     string `json:"docker.name"`
-	ID       string `json:"docker.id"`
-	Image    string `json:"docker.image"`
-	Hostname string `json:"docker.hostname"`
+	Message string     `json:"message"`
+	Docker  DockerInfo `json:"docker"`
 }
